@@ -23,7 +23,7 @@ npm run dev -- --port 5173        # = node server.js --port 5173
 | `dist/app.js` | 全部交互逻辑(半压缩长行) |
 | `dist/asset-config.js` | 图片路径配置 |
 | `dist/assets/` | 图片与本地二维码库 |
-| `server.js` / `feishu-config.json` | 静态服务 + 飞书配置(**密钥勿外泄、勿进仓库**) |
+| `server.js` / `feishu-config.json` | 静态服务 + 飞书同步 + 飞书数据源排行榜(**密钥勿外泄、勿进仓库**) |
 | `_deploy_github.py` / `github-token.txt` | GitHub Pages 部署脚本与令牌(本地) |
 | `启动活动页.vbs` / `停止活动页.cmd` | 内网站点启停 |
 
@@ -76,6 +76,7 @@ node server.js --port 8901
 - 已配通(2026-09-22):`feishu-config.json` → tenant_access_token(缓存)→ 写多维表格一条记录。
 - 表字段:`UID/PID/VID/用户昵称/接受者用户昵称/接受者UID/接受者PID/接受者VID/比赛时间(ms)/发起方比分/对手比分/提交时间(ms)` + 附件字段 `开黑图`、`游戏结算图`(type 17);各类 ID 留空,等后端登录态。
 - 凭证图链路:前端 base64(≤1000px JPEG)随战绩 POST → `server.js` 调 `drive/v1/medias/upload_all`(parent_type=`bitable_image`)换 file_token → 写入附件字段;字段不存在会自动创建(已实测,2026-09-22)。请求体上限已放宽到 25MB。
+- **排行榜不落数据库**:`GET /api/leaderboard` 直接读飞书表按规则计分(同对手同日去重、参赛 1 分胜方 +1、积分降序同分看胜场、前 50),30s 缓存,写战绩后缓存立即失效;前端 `loadBoard()` 优先用接口数据,接口不可用(GitHub Pages 纯静态)自动回退演示数据。已实测计分/去重/排序(2026-09-22)。
 - 未配置时返回 `not_configured`,页面无感知。
 
 ## 待办(正式接入清单)
@@ -83,7 +84,7 @@ node server.js --port 8901
 1. Oopz 真实登录 → 替换 `ME`/`FRIEND`;
 2. 服务端战绩存储 + 跨设备邀请查询;
 3. 确认权限、服务端锁定、并发处理;
-4. 服务端计分与真实榜单;
+4. ~~服务端计分与真实榜单~~ 已有过渡实现:榜单直接以飞书表为数据源(见「飞书同步」),后端正式版可替换;
 5. 凭证图上传对象存储(现为 base64 存 localStorage);
 6. 抖音 7 天无限公民会员:纯运营发放,无开发量(页面只有权益文案);
 7. 铭牌发放(平台侧,页面无依赖)。

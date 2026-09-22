@@ -129,6 +129,44 @@ async function submitFeishu(rec) {
   return { ok: true };
 }
 
+// ---- 排行榜：直接以飞书表为数据源计分（不落数据库），30s 缓存防触发频率限制 ----
+let lbCache = { rows: null, exp: 0 };
+const feishuText = v => Array.isArray(v) ? v.map(s => s?.text || '').join('') : (v ?? '');
+async function getLeaderboard() {
+  if (lbCache.rows && Date.now() < lbCache.exp) return lbCache.rows;
+  const token = await getFeishuToken();
+  const items = [];
+  let pageToken = '';
+  do {
+    const u = `https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/records?page_size=500` + (pageToken ? `&page_token=${pageToken}` : '');
+    const d = await (await fetch(u, { headers: { Authorization: 'Bearer ' + token } })).json();
+    if (d.code !== 0) throw new Error('feishu records list: ' + (d.msg || d.code));
+    items.push(...(d.data.items || []));
+    pageToken = d.data.has_more ? d.data.page_token : '';
+  } while (pageToken);
+  const players = new Map(), seen = new Set();
+  for (const it of items) {
+    const f = it.fields || {};
+    const name = String(feishuText(f['用户昵称'])).trim();
+    const other = String(feishuText(f['接受者用户昵称'])).trim();
+    if (!name || !other) continue;
+    const ms = Number(f['比赛时间']) || 0;
+    const day = ms ? new Date(ms + 8 * 3600e3).toISOString().slice(0, 10) : ''; // 北京时间日期
+    const pairKey = [name, other].sort().join('↔') + '@' + day;
+    if (seen.has(pairKey)) continue; // 同一对手、同一天只计最先确认的一场
+    seen.add(pairKey);
+    const a = Number(f['发起方比分']) || 0, b = Number(f['对手比分']) || 0;
+    for (const [n, win] of [[name, a > b], [other, b > a]]) {
+      const p = players.get(n) || { name: n, games: 0, wins: 0, points: 0 };
+      p.games++; p.points++; if (win) { p.wins++; p.points++; } // 参赛 1 分，胜方再 +1，平局各 1
+      players.set(n, p);
+    }
+  }
+  const rows = [...players.values()].sort((x, y) => y.points - x.points || y.wins - x.wins).slice(0, 50);
+  lbCache = { rows, exp: Date.now() + 30e3 };
+  return rows;
+}
+
 http.createServer((req, res) => {
   let urlPath;
   try {
@@ -143,6 +181,7 @@ http.createServer((req, res) => {
     req.on('end', async () => {
       try {
         const out = await submitFeishu(JSON.parse(body || '{}'));
+        if (out.ok) lbCache.exp = 0; // 新战绩确认后让榜单缓存立刻失效
         res.writeHead(out.ok ? 200 : 502, { 'Content-Type': 'application/json; charset=utf-8' });
         res.end(JSON.stringify(out));
       } catch (e) {
@@ -150,6 +189,20 @@ http.createServer((req, res) => {
         res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
       }
     });
+    return;
+  }
+  if (req.method === 'GET' && urlPath === '/api/leaderboard') {
+    (async () => {
+      try {
+        if (!feishuConfig?.appId) throw new Error('not_configured');
+        const rows = await getLeaderboard();
+        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: true, rows }));
+      } catch (e) {
+        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
+        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
+      }
+    })();
     return;
   }
   let file = path.normalize(path.join(ROOT, urlPath));
