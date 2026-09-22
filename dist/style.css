@@ -66,7 +66,7 @@ dialog{width:min(600px,calc(100% - 28px));max-height:92dvh;scrollbar-width:thin;
 
 /* Proof required marker and format line */
 .proof-item{position:relative}
-.proof-req{position:absolute;top:9px;right:11px;color:var(--muted);font-size:12px;font-weight:500}
+.proof-req{position:absolute;top:10px;right:11px;color:var(--muted);font-size:10px;font-weight:400}
 .proof-format{margin:-2px 0 4px;font-size:12px;color:var(--muted)}
 
 /* Dialog: contain overscroll so background does not rubber-band */
@@ -76,14 +76,16 @@ dialog{overscroll-behavior:contain}
 @media(max-width:700px){
 .proof-item{pointer-events:none}
 .proof-item button{pointer-events:auto}
-.proof-grid .proof-item .example-pop{position:fixed;left:50%;right:auto;top:50%;bottom:auto;transform:translate(-50%,-50%);max-width:92vw}
+.proof-grid .proof-item .example-pop,.proof-grid .proof-item:nth-child(2) .example-pop{position:fixed;left:50%;right:auto;top:50%;bottom:auto;transform:translate(-50%,-50%);max-width:92vw}
 .proof-grid .proof-item .example-pop img{max-width:100%;max-height:60dvh}
 }
+/* Touch: pop shows only via tap (.show), sticky :hover must not keep it open */
+@media(hover:none){.proof-example:hover .example-pop{display:none}}
 
 /* Dialog: no focus outline, no horizontal pan, inputs fit width */
 dialog:focus{outline:none}
 dialog:focus-visible{outline:none}
 dialog{overflow-x:hidden}
 #modal-body input{max-width:100%}
-#modal-body input[type="datetime-local"]{width:100%}
+#modal-body input[type="datetime-local"]{width:100%;min-width:0;-webkit-appearance:none;appearance:none}
 @media(max-width:700px){.proof-item:focus{outline:none}.proof-example:focus-visible{outline:none}}
