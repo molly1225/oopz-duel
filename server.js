@@ -45,6 +45,54 @@ async function getFeishuToken() {
   feishuToken = { value: d.tenant_access_token, exp: Date.now() + (d.expire - 300) * 1000 };
   return feishuToken.value;
 }
+
+// 多维表格附件字段：图片需先上传到飞书素材库拿 file_token，再写入附件字段
+function dataUrlToBuffer(dataUrl) {
+  const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(dataUrl || '');
+  if (!m) return null;
+  return { buf: Buffer.from(m[2], 'base64'), mime: m[1] };
+}
+function multipartBody(fields, filename, buf, mime) {
+  const boundary = '----fs' + Date.now().toString(16) + Math.random().toString(16).slice(2);
+  const parts = [];
+  for (const [k, v] of Object.entries(fields)) {
+    parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="${k}"\r\n\r\n${v}\r\n`));
+  }
+  parts.push(Buffer.from(`--${boundary}\r\nContent-Disposition: form-data; name="file"; filename="${filename}"\r\nContent-Type: ${mime}\r\n\r\n`));
+  parts.push(buf, Buffer.from(`\r\n--${boundary}--\r\n`));
+  return { body: Buffer.concat(parts), contentType: `multipart/form-data; boundary=${boundary}` };
+}
+async function uploadFeishuMedia(token, dataUrl, filename) {
+  const img = dataUrlToBuffer(dataUrl);
+  if (!img) return null;
+  const { body, contentType } = multipartBody({
+    file_name: filename,
+    parent_type: 'bitable_image',
+    parent_node: feishuConfig.appToken,
+    size: String(img.buf.length)
+  }, filename, img.buf, img.mime);
+  const r = await fetch('https://open.feishu.cn/open-apis/drive/v1/medias/upload_all', {
+    method: 'POST', headers: { Authorization: 'Bearer ' + token, 'Content-Type': contentType }, body
+  });
+  const d = await r.json();
+  if (d.code !== 0) throw new Error('feishu media upload: ' + (d.msg || d.code));
+  return d.data.file_token;
+}
+// 附件字段不存在时自动创建（type 17 = 附件）
+async function ensureFeishuField(token, name) {
+  const r = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/fields?page_size=100`, {
+    headers: { Authorization: 'Bearer ' + token }
+  });
+  const d = await r.json();
+  if (d.code !== 0) throw new Error('feishu fields list: ' + (d.msg || d.code));
+  if ((d.data.items || []).some(f => f.field_name === name)) return;
+  const c = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/fields`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ field_name: name, type: 17 })
+  });
+  const cd = await c.json();
+  if (cd.code !== 0) throw new Error('feishu field create: ' + (cd.msg || cd.code));
+}
 async function submitFeishu(rec) {
   if (!feishuConfig?.appId) return { ok: false, error: 'not_configured' };
   const token = await getFeishuToken();
@@ -63,6 +111,15 @@ async function submitFeishu(rec) {
   fields[F.a || '发起方比分'] = Number(rec.a ?? 0);
   fields[F.b || '对手比分'] = Number(rec.b ?? 0);
   fields[F.submittedAt || '提交时间'] = Date.now();
+  // 两张凭证图：开黑截图 + 游戏结算图（附件字段）
+  const proofs = [['voice', F.voiceProof || '开黑图', '开黑图.jpg'], ['result', F.resultProof || '游戏结算图', '游戏结算图.jpg']];
+  for (const [key, fieldName, filename] of proofs) {
+    const dataUrl = rec.proofs?.[key];
+    if (!dataUrl) continue;
+    await ensureFeishuField(token, fieldName);
+    const fileToken = await uploadFeishuMedia(token, dataUrl, filename);
+    if (fileToken) fields[fieldName] = [{ file_token: fileToken }];
+  }
   const r = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/records`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: JSON.stringify({ fields })
@@ -82,7 +139,7 @@ http.createServer((req, res) => {
   }
   if (req.method === 'POST' && urlPath === '/api/feishu') {
     let body = '';
-    req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
+    req.on('data', c => { body += c; if (body.length > 25e6) req.destroy(); }); // 含两张凭证图 base64，放宽到 25MB
     req.on('end', async () => {
       try {
         const out = await submitFeishu(JSON.parse(body || '{}'));
