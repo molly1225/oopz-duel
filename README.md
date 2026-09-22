@@ -2,6 +2,9 @@
 
 零依赖原生 HTML/JS 活动页。`dist/` 即源码,无构建步骤。本文件是唯一需要先读的文档;需求与接口清单见 [需求与接口联调文档.md](需求与接口联调文档.md)。
 
+- 线上演示:https://molly1225.github.io/oopz-duel/(GitHub Pages,仓库 `molly1225/oopz-duel`,根目录 `index.html` 跳转到 `dist/`)
+- 重新部署:本地改完后运行 `python _deploy_github.py`(从 `github-token.txt` 读令牌,全量覆盖推送)
+
 ## 运行
 
 ```sh
