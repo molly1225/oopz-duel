@@ -63,3 +63,19 @@ dialog{width:min(600px,calc(100% - 28px));max-height:92dvh;scrollbar-width:thin;
 
 /* Mobile: hide drag hint in proof upload boxes */
 @media(max-width:700px){.proof-item span.proof-hint{display:none}}
+
+/* Proof required marker and format line */
+.proof-item{position:relative}
+.proof-req{position:absolute;top:9px;right:11px;color:#e87878;font-size:12px;font-weight:500}
+.proof-format{margin:-2px 0 4px;font-size:12px;color:var(--muted)}
+
+/* Dialog: contain overscroll so background does not rubber-band */
+dialog{overscroll-behavior:contain}
+
+/* Mobile: proof box not tappable, example pop centered in viewport */
+@media(max-width:700px){
+.proof-item{pointer-events:none}
+.proof-item button{pointer-events:auto}
+.proof-grid .proof-item .example-pop{position:fixed;left:50%;right:auto;top:14dvh;bottom:auto;transform:translateX(-50%);max-width:min(340px,86vw)}
+.proof-grid .proof-item .example-pop img{max-width:100%;max-height:48dvh}
+}
