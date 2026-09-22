@@ -1,0 +1,9 @@
+{
+  "name": "zanlia-lianlian-event-page",
+  "version": "1.0.0",
+  "private": true,
+  "description": "咱俩练练 · Oopz 三角洲行动域 1v1 单挑活动页（纯静态，无需构建）",
+  "scripts": {
+    "dev": "node server.js"
+  }
+}

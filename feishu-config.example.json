@@ -1,0 +1,16 @@
+{
+  "appId": "cli_你的应用ID",
+  "appSecret": "你的应用密钥",
+  "appToken": "多维表格的 app_token（表格 URL 中 /base/ 后面那段）",
+  "tableId": "数据表的 table_id（表格 URL 中 table= 参数）",
+  "fields": {
+    "name": "发起方大名",
+    "otherName": "对手大名",
+    "time": "比赛时间",
+    "a": "发起方比分",
+    "b": "对手比分",
+    "message": "发起方留言",
+    "otherMessage": "对手留言",
+    "submittedAt": "提交时间"
+  }
+}
