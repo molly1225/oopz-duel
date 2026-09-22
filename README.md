@@ -2,6 +2,7 @@
 
 零依赖原生 HTML/JS 活动页。`dist/` 即源码,无构建步骤。本文件是唯一需要先读的文档;需求与接口清单见 [需求与接口联调文档.md](需求与接口联调文档.md)。
 
+- 内网地址(同事用):http://192.168.0.105:4318/(Molly 公司电脑,`server.js --host 0.0.0.0 --port 4318` 常驻,已注册开机自启;启动/停止脚本:`启动活动页.vbs` / `停止活动页.cmd`。WLAN 是 DHCP 分配,同事打不开时先 `ipconfig` 确认 IP 是否变了)
 - 线上演示:https://molly1225.github.io/oopz-duel/(GitHub Pages,仓库 `molly1225/oopz-duel`,根目录 `index.html` 跳转到 `dist/`)
 - 重新部署:本地改完后运行 `python _deploy_github.py`(从 `github-token.txt` 读令牌,全量覆盖推送)
 
