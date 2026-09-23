@@ -127,4 +127,4 @@ dialog{overflow-x:hidden}
 .proof-grid .proof-item .example-pop img{width:auto;height:auto;max-width:100%;max-height:76dvh;object-fit:contain;margin:0 auto}
 }
 
-.invite-hint{text-align:center;margin:12px 0 0}
+.invite-hint{text-align:center;width:100%;margin:0 0 6px}
