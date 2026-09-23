@@ -282,6 +282,19 @@ http.createServer((req, res) => {
     api(async () => sendJson(res, 200, await getFeishuRecord(String(query.get('id') || ''))));
     return;
   }
+  // 删除战绩（仅未确认可删）
+  if (req.method === 'DELETE' && urlPath === '/api/records') {
+    api(async () => {
+      const token = await getFeishuToken();
+      await ensureRecordFields(token);
+      const it = await findRecordByRid(token, String(query.get('id') || ''));
+      if (!it) return sendJson(res, 200, { ok: false, error: 'not_found' });
+      if (String(feishuText(it.fields['状态'])).trim() === '已确认') return sendJson(res, 200, { ok: false, error: 'already_confirmed' });
+      const d = await (await fetch(`${bitableBase()}/records/${it.record_id}`, { method: 'DELETE', headers: { Authorization: 'Bearer ' + token } })).json();
+      sendJson(res, 200, d.code === 0 ? { ok: true } : { ok: false, error: d.msg || 'feishu code ' + d.code });
+    });
+    return;
+  }
   // 确认战绩
   if (req.method === 'POST' && urlPath === '/api/records/confirm') {
     let body = '';

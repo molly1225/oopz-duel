@@ -107,6 +107,14 @@ dialog{overflow-x:hidden}
 .proof-grid .proof-item .example-pop,.proof-grid .proof-item:nth-child(2) .example-pop{position:fixed;left:50%;right:auto;top:50%;bottom:auto;transform:translate(-50%,-50%);width:auto;max-width:none;z-index:50}
 .proof-grid .proof-item .example-pop img{width:auto;max-width:min(560px,70vw);max-height:60vh}
 }
+/* 20260923-4: PC 改为图片底缘贴「示例」上缘、水平居中于触发点,尺寸收敛 */
+@media(hover:hover) and (min-width:701px){
+.proof-grid .proof-item .example-pop,.proof-grid .proof-item:nth-child(2) .example-pop{position:absolute;left:50%;right:auto;top:auto;bottom:calc(100% + 6px);transform:translateX(-50%);width:auto;max-width:none}
+.proof-grid .proof-item .example-pop img{width:auto;max-width:min(340px,60vw);max-height:230px}
+}
+/* 示例弹层关闭按钮(仅移动端) */
+.example-pop .pop-close{display:none;position:absolute;top:8px;right:8px;width:30px;height:30px;border-radius:50%;background:#5a6a60d9;color:#eef4f0;font-size:14px;font-style:normal;line-height:1;cursor:pointer;align-items:center;justify-content:center;padding:0;z-index:2}
+@media(hover:none),(max-width:700px){.example-pop .pop-close{display:flex}}
 /* 认证书保存区:活动详情链接 */
 .act-link{color:var(--green);text-decoration:underline}
 .act-link:hover{filter:brightness(1.15)}
@@ -114,7 +122,7 @@ dialog{overflow-x:hidden}
 /* 20260923-2: 认证书保存小字居中、贴近按钮 */
 .poster-hint{text-align:center;margin:6px auto 12px;line-height:1.6}
 /* 移动端示例弹层:竖屏截图完整显示,不裁切不压扁 */
-@media(hover:none),@media(max-width:700px){
+@media(hover:none),(max-width:700px){
 .proof-grid .proof-item .example-pop{max-height:84dvh}
 .proof-grid .proof-item .example-pop img{width:auto;height:auto;max-width:100%;max-height:76dvh;object-fit:contain;margin:0 auto}
 }
