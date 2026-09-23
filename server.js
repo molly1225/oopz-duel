@@ -30,9 +30,12 @@ const MIME = {
   '.ai': 'application/postscript'
 };
 
-// ---- 飞书多维表格同步（可选，配置 feishu-config.json 后启用）----
+// ---- 飞书多维表格：既当战绩库（创建/查询/确认），也当榜单数据源，不落数据库 ----
 let feishuConfig = null;
 try { feishuConfig = JSON.parse(fs.readFileSync(path.join(__dirname, 'feishu-config.json'), 'utf8')); } catch {}
+const feishuReady = () => !!feishuConfig?.appId;
+const bitableBase = () => `https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}`;
+
 let feishuToken = { value: null, exp: 0 };
 async function getFeishuToken() {
   if (feishuToken.value && Date.now() < feishuToken.exp) return feishuToken.value;
@@ -46,7 +49,7 @@ async function getFeishuToken() {
   return feishuToken.value;
 }
 
-// 多维表格附件字段：图片需先上传到飞书素材库拿 file_token，再写入附件字段
+// 图片需先上传到飞书素材库拿 file_token，再写入附件字段
 function dataUrlToBuffer(dataUrl) {
   const m = /^data:(image\/[\w+.-]+);base64,(.+)$/.exec(dataUrl || '');
   if (!m) return null;
@@ -78,49 +81,78 @@ async function uploadFeishuMedia(token, dataUrl, filename) {
   if (d.code !== 0) throw new Error('feishu media upload: ' + (d.msg || d.code));
   return d.data.file_token;
 }
-// 附件字段不存在时自动创建（type 17 = 附件）
-async function ensureFeishuField(token, name) {
-  const r = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/fields?page_size=100`, {
-    headers: { Authorization: 'Bearer ' + token }
-  });
-  const d = await r.json();
-  if (d.code !== 0) throw new Error('feishu fields list: ' + (d.msg || d.code));
-  if ((d.data.items || []).some(f => f.field_name === name)) return;
-  const c = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/fields`, {
+
+// 字段不存在时自动创建（type 17 = 附件，1 = 文本）
+let fieldsEnsured = false;
+async function ensureFeishuField(token, name, type = 17, existing) {
+  if (existing?.some(f => f.field_name === name)) return;
+  const c = await fetch(`${bitableBase()}/fields`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
-    body: JSON.stringify({ field_name: name, type: 17 })
+    body: JSON.stringify({ field_name: name, type })
   });
   const cd = await c.json();
-  if (cd.code !== 0) throw new Error('feishu field create: ' + (cd.msg || cd.code));
+  if (cd.code !== 0) throw new Error('feishu field create ' + name + ': ' + (cd.msg || cd.code));
 }
-async function submitFeishu(rec) {
-  if (!feishuConfig?.appId) return { ok: false, error: 'not_configured' };
+async function ensureRecordFields(token) {
+  if (fieldsEnsured) return;
+  const r = await fetch(`${bitableBase()}/fields?page_size=100`, { headers: { Authorization: 'Bearer ' + token } });
+  const d = await r.json();
+  if (d.code !== 0) throw new Error('feishu fields list: ' + (d.msg || d.code));
+  const items = d.data.items || [];
+  for (const n of ['记录ID', '发起方留言', '接受者留言', '状态']) await ensureFeishuField(token, n, 1, items);
+  for (const n of ['开黑图', '游戏结算图']) await ensureFeishuField(token, n, 17, items);
+  fieldsEnsured = true;
+}
+
+const feishuText = v => Array.isArray(v) ? v.map(s => s?.text || '').join('') : (v ?? '');
+const firstToken = v => Array.isArray(v) ? (v[0]?.file_token || '') : '';
+
+async function findRecordByRid(token, rid) {
+  const r = await fetch(`${bitableBase()}/records/search`, {
+    method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ filter: { conjunction: 'and', conditions: [{ field_name: '记录ID', operator: 'is', value: [rid] }] }, page_size: 5 })
+  });
+  const d = await r.json();
+  if (d.code !== 0) throw new Error('feishu search: ' + (d.msg || d.code));
+  return d.data.items?.[0] || null;
+}
+
+// 创建/更新战绩（确认前可改；已确认拒绝）
+async function saveFeishuRecord(rec) {
   const token = await getFeishuToken();
-  const F = feishuConfig.fields || {};
-  const fields = {};
-  fields[F.uid || 'UID'] = rec.uid || '';
-  fields[F.pid || 'PID'] = rec.pid || '';
-  fields[F.vid || 'VID'] = rec.vid || '';
-  fields[F.userName || '用户昵称'] = rec.userName || '';
-  fields[F.otherUserName || '接受者用户昵称'] = rec.otherUserName || '';
-  fields[F.otherUid || '接受者UID'] = rec.otherUid || '';
-  fields[F.otherPid || '接受者PID'] = rec.otherPid || '';
-  fields[F.otherVid || '接受者VID'] = rec.otherVid || '';
+  await ensureRecordFields(token);
   const t = new Date(rec.time);
-  fields[F.time || '比赛时间'] = isNaN(t) ? Date.now() : t.getTime();
-  fields[F.a || '发起方比分'] = Number(rec.a ?? 0);
-  fields[F.b || '对手比分'] = Number(rec.b ?? 0);
-  fields[F.submittedAt || '提交时间'] = Date.now();
-  // 两张凭证图：开黑截图 + 游戏结算图（附件字段）
-  const proofs = [['voice', F.voiceProof || '开黑图', '开黑图.jpg'], ['result', F.resultProof || '游戏结算图', '游戏结算图.jpg']];
+  const fields = {
+    '记录ID': String(rec.id || ''),
+    'UID': rec.uid || '', 'PID': rec.pid || '', 'VID': rec.vid || '',
+    '用户昵称': rec.name || '',
+    '比赛时间': isNaN(t) ? Date.now() : t.getTime(),
+    '发起方比分': Number(rec.a ?? 0),
+    '对手比分': Number(rec.b ?? 0),
+    '发起方留言': rec.message || '',
+    '状态': '待确认'
+  };
+  const proofs = [['voice', '开黑图', '开黑图.jpg'], ['result', '游戏结算图', '游戏结算图.jpg']];
   for (const [key, fieldName, filename] of proofs) {
     const dataUrl = rec.proofs?.[key];
     if (!dataUrl) continue;
-    await ensureFeishuField(token, fieldName);
     const fileToken = await uploadFeishuMedia(token, dataUrl, filename);
     if (fileToken) fields[fieldName] = [{ file_token: fileToken }];
   }
-  const r = await fetch(`https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/records`, {
+  const existing = await findRecordByRid(token, fields['记录ID']);
+  if (existing) {
+    const status = String(feishuText(existing.fields['状态'])).trim();
+    if (status === '已确认') return { ok: false, error: 'already_confirmed' };
+    delete fields['状态'];
+    const r = await fetch(`${bitableBase()}/records/${existing.record_id}`, {
+      method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+      body: JSON.stringify({ fields })
+    });
+    const d = await r.json();
+    if (d.code !== 0) return { ok: false, error: d.msg || 'feishu code ' + d.code };
+    return { ok: true, updated: true };
+  }
+  const r = await fetch(`${bitableBase()}/records`, {
     method: 'POST', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
     body: JSON.stringify({ fields })
   });
@@ -129,16 +161,56 @@ async function submitFeishu(rec) {
   return { ok: true };
 }
 
-// ---- 排行榜：直接以飞书表为数据源计分（不落数据库），30s 缓存防触发频率限制 ----
+// 查询战绩（邀请链接跨设备打开用）
+async function getFeishuRecord(rid) {
+  const token = await getFeishuToken();
+  await ensureRecordFields(token);
+  const it = await findRecordByRid(token, rid);
+  if (!it) return { ok: false, error: 'not_found' };
+  const f = it.fields || {};
+  return {
+    ok: true,
+    record: {
+      id: String(feishuText(f['记录ID'])),
+      name: String(feishuText(f['用户昵称'])),
+      time: Number(f['比赛时间']) || 0,
+      a: Number(f['发起方比分']) || 0,
+      b: Number(f['对手比分']) || 0,
+      message: String(feishuText(f['发起方留言'])),
+      otherName: String(feishuText(f['接受者用户昵称'])),
+      otherMessage: String(feishuText(f['接受者留言'])),
+      confirmed: String(feishuText(f['状态'])).trim() === '已确认',
+      proofTokens: { voice: firstToken(f['开黑图']), result: firstToken(f['游戏结算图']) }
+    }
+  };
+}
+
+// 确认战绩（锁定，防重复确认）
+async function confirmFeishuRecord(rid, otherName, otherMessage) {
+  const token = await getFeishuToken();
+  await ensureRecordFields(token);
+  const it = await findRecordByRid(token, rid);
+  if (!it) return { ok: false, error: 'not_found' };
+  if (String(feishuText(it.fields['状态'])).trim() === '已确认') return { ok: false, error: 'already_confirmed' };
+  const r = await fetch(`${bitableBase()}/records/${it.record_id}`, {
+    method: 'PUT', headers: { 'Content-Type': 'application/json', Authorization: 'Bearer ' + token },
+    body: JSON.stringify({ fields: { '接受者用户昵称': otherName || '', '接受者留言': otherMessage || '', '状态': '已确认', '提交时间': Date.now() } })
+  });
+  const d = await r.json();
+  if (d.code !== 0) return { ok: false, error: d.msg || 'feishu code ' + d.code };
+  lbCache.exp = 0; // 榜单缓存立刻失效
+  return { ok: true };
+}
+
+// ---- 排行榜：直接以飞书表为数据源计分（只计已确认），30s 缓存防触发频率限制 ----
 let lbCache = { rows: null, exp: 0 };
-const feishuText = v => Array.isArray(v) ? v.map(s => s?.text || '').join('') : (v ?? '');
 async function getLeaderboard() {
   if (lbCache.rows && Date.now() < lbCache.exp) return lbCache.rows;
   const token = await getFeishuToken();
   const items = [];
   let pageToken = '';
   do {
-    const u = `https://open.feishu.cn/open-apis/bitable/v1/apps/${feishuConfig.appToken}/tables/${feishuConfig.tableId}/records?page_size=500` + (pageToken ? `&page_token=${pageToken}` : '');
+    const u = `${bitableBase()}/records?page_size=500` + (pageToken ? `&page_token=${pageToken}` : '');
     const d = await (await fetch(u, { headers: { Authorization: 'Bearer ' + token } })).json();
     if (d.code !== 0) throw new Error('feishu records list: ' + (d.msg || d.code));
     items.push(...(d.data.items || []));
@@ -147,6 +219,7 @@ async function getLeaderboard() {
   const players = new Map(), seen = new Set();
   for (const it of items) {
     const f = it.fields || {};
+    if (String(feishuText(f['状态'])).trim() === '待确认') continue; // 未确认不计分
     const name = String(feishuText(f['用户昵称'])).trim();
     const other = String(feishuText(f['接受者用户昵称'])).trim();
     if (!name || !other) continue;
@@ -167,44 +240,82 @@ async function getLeaderboard() {
   return rows;
 }
 
+function sendJson(res, status, obj) {
+  res.writeHead(status, { 'Content-Type': 'application/json; charset=utf-8' });
+  res.end(JSON.stringify(obj));
+}
+
 http.createServer((req, res) => {
   let urlPath;
+  let query;
   try {
-    urlPath = decodeURIComponent(new URL(req.url, 'http://x').pathname);
+    const u = new URL(req.url, 'http://x');
+    urlPath = decodeURIComponent(u.pathname);
+    query = u.searchParams;
   } catch {
     res.writeHead(400).end('Bad Request');
     return;
   }
-  if (req.method === 'POST' && urlPath === '/api/feishu') {
+  const api = (fn) => (async () => {
+    try {
+      if (!feishuReady()) throw new Error('not_configured');
+      await fn();
+    } catch (e) {
+      sendJson(res, 502, { ok: false, error: String(e?.message || e) });
+    }
+  })();
+
+  // 创建/更新战绩（确认前可改）
+  if (req.method === 'POST' && urlPath === '/api/records') {
     let body = '';
     req.on('data', c => { body += c; if (body.length > 25e6) req.destroy(); }); // 含两张凭证图 base64，放宽到 25MB
-    req.on('end', async () => {
-      try {
-        const out = await submitFeishu(JSON.parse(body || '{}'));
-        if (out.ok) lbCache.exp = 0; // 新战绩确认后让榜单缓存立刻失效
-        res.writeHead(out.ok ? 200 : 502, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify(out));
-      } catch (e) {
-        res.writeHead(500, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
-      }
-    });
+    req.on('end', () => api(async () => {
+      let rec;
+      try { rec = JSON.parse(body || '{}'); } catch { return sendJson(res, 400, { ok: false, error: 'bad_json' }); }
+      if (!rec.id) return sendJson(res, 400, { ok: false, error: 'missing_id' });
+      sendJson(res, 200, await saveFeishuRecord(rec));
+    }));
     return;
   }
-  if (req.method === 'GET' && urlPath === '/api/leaderboard') {
+  // 查询战绩（邀请链接打开）
+  if (req.method === 'GET' && urlPath === '/api/records') {
+    api(async () => sendJson(res, 200, await getFeishuRecord(String(query.get('id') || ''))));
+    return;
+  }
+  // 确认战绩
+  if (req.method === 'POST' && urlPath === '/api/records/confirm') {
+    let body = '';
+    req.on('data', c => { body += c; if (body.length > 1e6) req.destroy(); });
+    req.on('end', () => api(async () => {
+      let rec;
+      try { rec = JSON.parse(body || '{}'); } catch { return sendJson(res, 400, { ok: false, error: 'bad_json' }); }
+      sendJson(res, 200, await confirmFeishuRecord(String(rec.id || ''), rec.otherName, rec.otherMessage));
+    }));
+    return;
+  }
+  // 凭证图代理（飞书素材需鉴权，前端经这里取图）
+  if (req.method === 'GET' && urlPath.startsWith('/api/media/')) {
     (async () => {
       try {
-        if (!feishuConfig?.appId) throw new Error('not_configured');
-        const rows = await getLeaderboard();
-        res.writeHead(200, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: true, rows }));
-      } catch (e) {
-        res.writeHead(502, { 'Content-Type': 'application/json; charset=utf-8' });
-        res.end(JSON.stringify({ ok: false, error: String(e?.message || e) }));
-      }
+        if (!feishuReady()) throw new Error('not_configured');
+        const ft = await getFeishuToken();
+        const fileToken = urlPath.slice('/api/media/'.length);
+        const r = await fetch(`https://open.feishu.cn/open-apis/drive/v1/medias/${encodeURIComponent(fileToken)}/download`, {
+          headers: { Authorization: 'Bearer ' + ft }
+        });
+        if (!r.ok) { res.writeHead(404).end('Not Found'); return; }
+        res.writeHead(200, { 'Content-Type': r.headers.get('content-type') || 'image/jpeg', 'Cache-Control': 'public, max-age=86400' });
+        res.end(Buffer.from(await r.arrayBuffer()));
+      } catch { res.writeHead(502).end('Bad Gateway'); }
     })();
     return;
   }
+  // 排行榜（飞书表数据源）
+  if (req.method === 'GET' && urlPath === '/api/leaderboard') {
+    api(async () => sendJson(res, 200, { ok: true, rows: await getLeaderboard() }));
+    return;
+  }
+
   let file = path.normalize(path.join(ROOT, urlPath));
   if (!file.startsWith(ROOT)) { res.writeHead(403).end('Forbidden'); return; }
   if (urlPath.endsWith('/')) file = path.join(file, 'index.html');

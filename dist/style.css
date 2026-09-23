@@ -96,3 +96,13 @@ dialog{overflow-x:hidden}
 /* Ranking: show 7 rows, scroll inside container, sticky header */
 .rank-scroll{max-height:434px;overflow-y:auto;scrollbar-width:thin;scrollbar-color:#58715f #18231e}
 .rank-scroll thead th{position:sticky;top:0;z-index:1}
+
+/* 20260923: 示例入口改到说明小字行、更小；PC 浮层向下展开,不再遮挡上方输入区 */
+.proof-example{font-size:11px;margin-left:6px}
+.proof-item .example-pop{bottom:auto;top:calc(100% + 6px)}
+/* 触屏粘性 :hover 不得盖住 JS 点开的 .show 状态 */
+@media(hover:none){.proof-example.show:hover .example-pop{display:block}}
+/* 认证书保存区:活动详情链接 */
+.act-link{color:var(--green);text-decoration:underline}
+.act-link:hover{filter:brightness(1.15)}
+.hint strong{color:#e8f5ec}
