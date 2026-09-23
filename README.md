@@ -76,6 +76,8 @@ npm run dev -- --port 5173        # = node server.js --port 5173
 4. 无头 Edge 最小窗口宽度 518px,设 390 会右侧裁切;外网字体用 `--host-resolver-rules="MAP fonts.googleapis.com 127.0.0.1, MAP fonts.gstatic.com 127.0.0.1"` 屏蔽防卡死;`--virtual-time-budget` 过大可能挂起,截图分开跑、加 `timeout`。
 5. GitHub Pages 静态资源有约 10 分钟缓存 —— 靠 `?v=` 版本号破。
 6. 复制兜底:`showModal` 后 `document.body` 是 inert,execCommand 复制的 textarea **必须挂进 modal 元素内**,否则返回 true 但剪贴板为空;`navigator.clipboard.writeText` 在 HTTP/无权限环境可能挂起,需 `Promise.race` 加 800ms 超时再降级。
+7. **`<button>` 里不能嵌 `<button>`** —— 浏览器解析时会直接拆散外层结构(示例弹层曾因此整个错位);弹层内的关闭按钮用 `<i class="pop-close">`。
+8. **媒体查询列表写法是 `@media(a),(b){}`,写成 `@media(a),@media(b){}` 整条规则直接报废**且不报错 —— 移动端样式失效先查这个。
 
 ## 验证套路(无头实测,勿只做语法检查)
 
