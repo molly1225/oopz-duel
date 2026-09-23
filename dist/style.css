@@ -102,6 +102,11 @@ dialog{overflow-x:hidden}
 .proof-item .example-pop{bottom:auto;top:calc(100% + 6px)}
 /* 触屏粘性 :hover 不得盖住 JS 点开的 .show 状态 */
 @media(hover:none){.proof-example.show:hover .example-pop{display:block}}
+/* PC 示例图:与移动端一致的居中浮层,不遮挡表单字段 */
+@media(hover:hover) and (min-width:701px){
+.proof-grid .proof-item .example-pop,.proof-grid .proof-item:nth-child(2) .example-pop{position:fixed;left:50%;right:auto;top:50%;bottom:auto;transform:translate(-50%,-50%);width:auto;max-width:none;z-index:50}
+.proof-grid .proof-item .example-pop img{width:auto;max-width:min(560px,70vw);max-height:60vh}
+}
 /* 认证书保存区:活动详情链接 */
 .act-link{color:var(--green);text-decoration:underline}
 .act-link:hover{filter:brightness(1.15)}
