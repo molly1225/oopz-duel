@@ -111,3 +111,10 @@ dialog{overflow-x:hidden}
 .act-link{color:var(--green);text-decoration:underline}
 .act-link:hover{filter:brightness(1.15)}
 .hint strong{color:#e8f5ec}
+/* 20260923-2: 认证书保存小字居中、贴近按钮 */
+.poster-hint{text-align:center;margin:6px auto 12px;line-height:1.6}
+/* 移动端示例弹层:竖屏截图完整显示,不裁切不压扁 */
+@media(hover:none),@media(max-width:700px){
+.proof-grid .proof-item .example-pop{max-height:84dvh}
+.proof-grid .proof-item .example-pop img{width:auto;height:auto;max-width:100%;max-height:76dvh;object-fit:contain;margin:0 auto}
+}

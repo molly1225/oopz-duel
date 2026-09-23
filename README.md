@@ -61,7 +61,7 @@ npm run dev -- --port 5173        # = node server.js --port 5173
 
 1. UI 不写规则性文案:留空默认昵称、留空随机留言保留行为但不解释。
 2. 凭证上传:仅「选择文件」唤起选择器;桌面端框可聚焦 Ctrl+V 粘贴、可拖拽,框内写「或拖拽上传」;移动端框不可点、隐藏拖拽文案;✕ 删除;JPG/PNG/WebP ≤ 9.5MB;失败 toast 只说「上传失败」;缺图提交红框;框右上角灰色小字 `*必填`。
-3. 示例图入口在说明小字行(绿色 11px);桌面 hover 向下展开浮层,移动 tap 居中弹层(`position:fixed` + **显式 `width:92vw`**,不给宽度 iOS 会缩成小点);点空白关闭。
+3. 示例图入口在说明小字行(绿色 11px);桌面 hover、移动 tap 均为视口居中浮层;移动端开黑示例用竖屏专用图 `proof-example-voice-mobile.webp`(`recordForm` 里按 `(max-width:700px)` 切换);弹层图必须 `object-fit:contain` + `max-height`,竖屏截图才不会被裁;点空白关闭。
 4. toast 两个元素(`#toast` / `#toast-modal`),页面居中黑底微透 0.8s。
 5. 弹窗:打开时锁背景滚动、焦点在弹窗本体(不选 ✕)、`overflow-x:hidden`、`overscroll-behavior:contain`。
 6. 战绩列表最多 3 行滚动;排行榜最多 50 条、可见 7 行容器内滚动、表头吸顶;顶部导航 sticky。
@@ -75,6 +75,7 @@ npm run dev -- --port 5173        # = node server.js --port 5173
 3. iOS:`position:fixed` 弹层必须给显式宽度;datetime-local 有固有宽度,需 `min-width:0` + `appearance:none`;**`:hover` 在触屏上点击会粘住,会把 JS 点开的 `.show` 弹层盖掉 —— 必须补 `@media(hover:none){.proof-example.show:hover .example-pop{display:block}}`**。
 4. 无头 Edge 最小窗口宽度 518px,设 390 会右侧裁切;外网字体用 `--host-resolver-rules="MAP fonts.googleapis.com 127.0.0.1, MAP fonts.gstatic.com 127.0.0.1"` 屏蔽防卡死;`--virtual-time-budget` 过大可能挂起,截图分开跑、加 `timeout`。
 5. GitHub Pages 静态资源有约 10 分钟缓存 —— 靠 `?v=` 版本号破。
+6. 复制兜底:`showModal` 后 `document.body` 是 inert,execCommand 复制的 textarea **必须挂进 modal 元素内**,否则返回 true 但剪贴板为空;`navigator.clipboard.writeText` 在 HTTP/无权限环境可能挂起,需 `Promise.race` 加 800ms 超时再降级。
 
 ## 验证套路(无头实测,勿只做语法检查)
 
